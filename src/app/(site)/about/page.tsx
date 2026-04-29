@@ -1,0 +1,19 @@
+import About from "@/components/About";
+import Breadcrumb from "@/components/Common/Breadcrumb";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title:
+    "About Us | Play SaaS Starter Kit and Boilerplate for Next.js",
+  description: "This is About page description",
+};
+const AboutPage = () => {
+  return (
+    <main>
+
+      <About />
+    </main>
+  );
+};
+
+export default AboutPage;
