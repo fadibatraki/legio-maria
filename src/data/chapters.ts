@@ -16,14 +16,20 @@ const toArabicNumber = (value: number) =>
     .map((digit) => arabicDigits[Number(digit)] ?? digit)
     .join("");
 
-const getChapterOrder = (slug: string) => {
-  const match = slug.match(/(\d+)/);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+const getChapterNumberFromSlug = (slug: string) => {
+  const match = slug.match(/^chapter-(\d+)$/);
+  return match ? Number(match[1]) : null;
 };
+
+const getChapterOrder = (slug: string) =>
+  getChapterNumberFromSlug(slug) ?? Number.MAX_SAFE_INTEGER;
 
 const cleanupTitle = (value: string) =>
   value
-    .replace(/^الفصل\s+[\u0660-\u0669\d]+\s*[-–—:]?\s*/, "")
+    .replace(
+      /^الفصل\s+(?:[\u0660-\u0669\d]+|الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر)\s*[-–—:]?\s*/,
+      "",
+    )
     .trim();
 
 const extractStringValue = (source: string, key: string) => {
@@ -57,10 +63,11 @@ export async function getChapters(): Promise<Chapter[]> {
       const headingTitle = extractTagText(source, "h1");
       const description = extractStringValue(source, "description");
       const firstParagraph = extractTagText(source, "p");
+      const chapterNumber = getChapterNumberFromSlug(entry.name) ?? index + 1;
       const title = cleanupTitle(headingTitle || metadataTitle || entry.name);
 
       return {
-        number: toArabicNumber(index + 1),
+        number: toArabicNumber(chapterNumber),
         title,
         href: `/chapters/${entry.name}`,
         summary: description || firstParagraph || "فصل من دليل الليجيو ماريا.",

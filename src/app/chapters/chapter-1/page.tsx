@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "الفصل الأول - الاسم الواصل",
+  title: "الفصل الأول - الاسم والاصل",
   description: "الفصل الأول من دليل الليجيو ماريا.",
 };
 
@@ -65,9 +65,9 @@ export default function ChapterOnePage() {
           <blockquote>
             إن مريم هي أمنا جميعاً نحن أعضاء جسد المسيح السري، لأنها بمحبتها
             ساهمت في ولادة المؤمنين في الكنيسة.
-       
 
-          
+
+
             إن فيها وحدها يمكن أن يكون الإنسان على صورة الله، على قدر ما يمكن ذلك
             للطبيعة البشرية، بنعمة يسوع المسيح.
             <br />
@@ -75,7 +75,7 @@ export default function ChapterOnePage() {
           </blockquote>
 
           <blockquote>
-            اللجير مارية تظهر وجه الكنيسة الكاثوليكية الحقيقي.
+            اللجيو ماريا تظهر وجه الكنيسة الكاثوليكية الحقيقي.
             <br />
             <span>— البابا يوحنا الثالث والعشرون</span>
           </blockquote>

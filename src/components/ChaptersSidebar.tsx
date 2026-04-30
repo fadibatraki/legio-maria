@@ -3,15 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  BookOpen,
-  FileText,
-  Home,
-  Library,
-  Settings,
-  UserRound,
-  X,
-} from "lucide-react";
+import { BookOpen } from "lucide-react";
 import type { Chapter } from "@/data/chapters";
 
 type ChaptersSidebarProps = {
@@ -94,7 +86,7 @@ export default function ChaptersSidebar({ chapters }: ChaptersSidebarProps) {
             <Link
               className="sidebar-chapter-row"
               href={chapter.href}
-              key={chapter.title}
+              key={chapter.href}
               onClick={closeSidebar}
             >
               <span className="sidebar-chapter-number">{chapter.number}</span>
