@@ -1585,6 +1585,11 @@ body:has(.chapters-sidebar.is-open) .site-frame {
   font-size: 20px;
   font-weight: 500;
   line-height: 2.1;
+  /* Allow text selection */
+  user-select: text;
+  -webkit-user-select: text;
+  /* Disable callout on iOS */
+  -webkit-touch-callout: none;
 }
 
 .chapter-article p {
@@ -2665,6 +2670,22 @@ body.reading-focus .chapter-article {
 
   .chapter-index-summary {
     font-size: 14px;
+  }
+
+  /* Selection popup - better touch experience on mobile */
+  .selection-popup {
+    padding: 8px;
+    gap: 8px;
+    box-shadow: 0 12px 36px rgb(23 37 54 / 22%);
+  }
+
+  .selection-popup button {
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 700;
+    /* Prevent iOS zoom on tap */
+    touch-action: manipulation;
   }
 }
 

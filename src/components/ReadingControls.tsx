@@ -270,32 +270,35 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
     }
 
     const updateSelectionPopup = () => {
-      const selectedRange = getSelectedChapterRange();
+      // Small delay to ensure selection is complete
+      setTimeout(() => {
+        const selectedRange = getSelectedChapterRange();
 
-      if (!selectedRange) {
-        setSelectionPopup(null);
-        return;
-      }
+        if (!selectedRange) {
+          setSelectionPopup(null);
+          return;
+        }
 
-      const rect = selectedRange.range.getBoundingClientRect();
+        const rect = selectedRange.range.getBoundingClientRect();
 
-      if (!rect.width && !rect.height) {
-        setSelectionPopup(null);
-        return;
-      }
+        if (!rect.width && !rect.height) {
+          setSelectionPopup(null);
+          return;
+        }
 
-      const top =
-        rect.top > 72 ? rect.top - 58 : Math.min(rect.bottom + 12, window.innerHeight - 64);
+        const top =
+          rect.top > 72 ? rect.top - 58 : Math.min(rect.bottom + 12, window.innerHeight - 64);
 
-      setSelectionPopup({
-        text: selectedRange.text,
-        scrollY: Math.max(0, Math.round(window.scrollY + rect.top - 110)),
-        top,
-        left: Math.min(
-          window.innerWidth - 18,
-          Math.max(18, rect.left + rect.width / 2),
-        ),
-      });
+        setSelectionPopup({
+          text: selectedRange.text,
+          scrollY: Math.max(0, Math.round(window.scrollY + rect.top - 110)),
+          top,
+          left: Math.min(
+            window.innerWidth - 18,
+            Math.max(18, rect.left + rect.width / 2),
+          ),
+        });
+      }, 100);
     };
 
     const clearSelectionPopup = (event: Event) => {
@@ -310,16 +313,55 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
       }
     };
 
+    // Support both mouse and touch events
     document.addEventListener("mouseup", updateSelectionPopup);
+    document.addEventListener("touchend", updateSelectionPopup);
     document.addEventListener("keyup", updateSelectionPopup);
     document.addEventListener("selectionchange", clearSelectionPopup);
 
     return () => {
       document.removeEventListener("mouseup", updateSelectionPopup);
+      document.removeEventListener("touchend", updateSelectionPopup);
       document.removeEventListener("keyup", updateSelectionPopup);
       document.removeEventListener("selectionchange", clearSelectionPopup);
     };
   }, [isChapterPage, isReady, pathname]);
+
+  // Prevent default context menu on mobile when text is selected
+  useEffect(() => {
+    if (!isReady || !isChapterPage) {
+      return;
+    }
+
+    const preventDefaultMenu = (event: Event) => {
+      const selection = window.getSelection();
+      if (selection && selection.toString().trim()) {
+        // Only prevent default menu if text is selected in chapter article
+        const article = document.querySelector(".chapter-article");
+        if (article && article.contains(selection.anchorNode)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }
+    };
+
+    // Prevent context menu on long press (mobile)
+    document.addEventListener("contextmenu", preventDefaultMenu);
+
+    // Prevent iOS callout menu
+    const style = document.createElement("style");
+    style.textContent = `
+      .chapter-article * {
+        -webkit-touch-callout: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.removeEventListener("contextmenu", preventDefaultMenu);
+      style.remove();
+    };
+  }, [isChapterPage, isReady]);
 
   const canResume =
     savedProgress &&
@@ -412,24 +454,51 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
       return "";
     }
 
-    // Get all paragraphs and headings, excluding links and blockquotes
-    const elements = article.querySelectorAll("p, h1, h2");
+    // Get all paragraphs, excluding special elements
+    const paragraphs = article.querySelectorAll("p");
     const textParts: string[] = [];
 
-    elements.forEach((el) => {
-      // Skip if inside blockquote or is a link
-      if (el.closest("blockquote") || el.classList.contains("back-link")) {
+    // Get the main heading
+    const mainHeading = article.querySelector("h1");
+    if (mainHeading && !mainHeading.closest("blockquote")) {
+      const headingText = mainHeading.textContent?.trim();
+      if (headingText) {
+        textParts.push(headingText);
+      }
+    }
+
+    // Get all paragraph text
+    paragraphs.forEach((p) => {
+      // Skip if:
+      // - inside blockquote
+      // - is a link (back-link)
+      // - has class section-kicker
+      if (
+        p.closest("blockquote") ||
+        p.classList.contains("back-link") ||
+        p.classList.contains("section-kicker")
+      ) {
         return;
       }
 
-      const text = el.textContent?.trim();
+      const text = p.textContent?.trim();
       if (text && !text.includes("العودة إلى")) {
-        textParts.push(text);
+        // Clean the text from special characters that might be read as "minus"
+        const cleanedText = text
+          .replace(/[-–—]/g, " ") // Remove dashes
+          .replace(/[()]/g, "") // Remove parentheses
+          .replace(/\s+/g, " ") // Normalize whitespace
+          .trim();
+
+        if (cleanedText) {
+          textParts.push(cleanedText);
+        }
       }
     });
 
-    const fullText = textParts.join(" ");
+    const fullText = textParts.join(". ");
     console.log("Extracted text length:", fullText.length);
+    console.log("First 200 chars:", fullText.substring(0, 200));
     return fullText;
   };
 
@@ -446,53 +515,103 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
     console.log(`Speaking chunk ${index + 1}/${chunksRef.current.length}:`, chunk.substring(0, 50));
 
     const utterance = new SpeechSynthesisUtterance(chunk);
-    utterance.lang = "ar-SA";
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 1;
+    utterance.lang = "ar";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
 
     // Try to find Arabic voice
     const voices = window.speechSynthesis.getVoices();
-    console.log("Available voices:", voices.length);
+
+    if (index === 0) {
+      console.log("Total available voices:", voices.length);
+      const arabicVoices = voices.filter(v => v.lang.includes("ar"));
+      console.log("Arabic voices:", arabicVoices.map(v => `${v.name} (${v.lang})`));
+    }
 
     const arabicVoice = voices.find(voice =>
-      voice.lang.startsWith("ar") || voice.lang.includes("AR")
+      voice.lang.includes("ar") || voice.lang.includes("AR")
     );
 
     if (arabicVoice) {
-      console.log("Using Arabic voice:", arabicVoice.name);
+      console.log("Using Arabic voice:", arabicVoice.name, arabicVoice.lang);
       utterance.voice = arabicVoice;
     } else {
-      console.log("No Arabic voice found, using default");
+      console.log("No Arabic voice found, trying default");
+      // Try to use any available voice
+      if (voices.length > 0) {
+        utterance.voice = voices[0];
+        console.log("Using first available voice:", voices[0].name, voices[0].lang);
+      }
     }
 
     utterance.onstart = () => {
-      console.log("Started speaking chunk", index);
+      console.log("✓ Started speaking chunk", index);
     };
 
     utterance.onend = () => {
-      console.log("Finished chunk", index);
+      console.log("✓ Finished chunk", index);
       currentUtteranceIndexRef.current = index + 1;
       // Continue to next chunk
-      setTimeout(() => speakNextChunk(index + 1), 100);
+      if (isSpeakingRef.current) {
+        setTimeout(() => speakNextChunk(index + 1), 50);
+      }
     };
 
-    utterance.onerror = (event) => {
-      console.error("Speech synthesis error:", event);
+    utterance.onerror = (event: any) => {
+      console.error("✗ Speech synthesis error details:");
+      console.error("  Error type:", event.error);
+      console.error("  Error message:", event.message || "No message");
+      console.error("  Chunk index:", index);
+      console.error("  Chunk text:", chunk.substring(0, 100));
+      console.error("  Full event:", event);
+
+      // Try to continue with next chunk if error is not fatal
+      if (event.error === "interrupted" || event.error === "canceled") {
+        console.log("Trying to continue...");
+        setTimeout(() => speakNextChunk(index + 1), 100);
+      } else {
+        alert(`خطأ في القراءة الصوتية: ${event.error || "غير معروف"}\nجرب متصفح Chrome أو Edge`);
+        setTtsState("idle");
+        currentUtteranceIndexRef.current = 0;
+        isSpeakingRef.current = false;
+      }
+    };
+
+    try {
+      window.speechSynthesis.speak(utterance);
+      console.log("Utterance queued for speaking");
+    } catch (error) {
+      console.error("Failed to queue utterance:", error);
+      alert("فشل تشغيل القراءة الصوتية. جرب متصفح آخر.");
       setTtsState("idle");
-      currentUtteranceIndexRef.current = 0;
       isSpeakingRef.current = false;
-    };
-
-    window.speechSynthesis.speak(utterance);
+    }
   };
 
   const startTTS = () => {
-    console.log("startTTS called");
+    console.log("=== startTTS called ===");
 
     if (typeof window === "undefined" || !window.speechSynthesis) {
       alert("عذراً، متصفحك لا يدعم القراءة الصوتية");
       return;
+    }
+
+    // Check if voices are available
+    const voices = window.speechSynthesis.getVoices();
+    console.log("Available voices at start:", voices.length);
+
+    if (voices.length === 0) {
+      console.warn("No voices available yet, waiting...");
+      // Try again after voices are loaded
+      setTimeout(() => {
+        const updatedVoices = window.speechSynthesis.getVoices();
+        console.log("Voices after waiting:", updatedVoices.length);
+        if (updatedVoices.length === 0) {
+          alert("لا توجد أصوات متاحة في متصفحك. جرب Chrome أو Edge.");
+          return;
+        }
+      }, 100);
     }
 
     const text = getChapterText();
@@ -501,33 +620,52 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
       return;
     }
 
+    console.log("Text extracted successfully, length:", text.length);
+    console.log("First 100 chars:", text.substring(0, 100));
+
     // Stop any ongoing speech
     window.speechSynthesis.cancel();
     isSpeakingRef.current = false;
 
-    // Wait a bit for cancel to take effect
+    // Wait a bit for cancel to take effect and voices to load
     setTimeout(() => {
-      // Split text into smaller chunks (every 150 chars approximately)
+      // Split text by sentences for better natural pauses
       const chunks: string[] = [];
-      const words = text.split(/\s+/);
-      let currentChunk = "";
 
-      words.forEach((word) => {
-        if (currentChunk.length + word.length + 1 > 150) {
+      // Split by common Arabic sentence endings
+      const sentences = text.split(/[.!?؟。]+/).filter(s => s.trim().length > 0);
+
+      sentences.forEach((sentence) => {
+        const trimmed = sentence.trim();
+        if (!trimmed) return;
+
+        // If sentence is too long, split it further by words
+        if (trimmed.length > 200) {
+          const words = trimmed.split(/\s+/);
+          let currentChunk = "";
+
+          words.forEach((word) => {
+            if (currentChunk.length + word.length + 1 > 200) {
+              if (currentChunk) chunks.push(currentChunk.trim());
+              currentChunk = word;
+            } else {
+              currentChunk += (currentChunk ? " " : "") + word;
+            }
+          });
           if (currentChunk) chunks.push(currentChunk.trim());
-          currentChunk = word;
         } else {
-          currentChunk += (currentChunk ? " " : "") + word;
+          chunks.push(trimmed);
         }
       });
-      if (currentChunk) chunks.push(currentChunk.trim());
 
       if (chunks.length === 0) {
         alert("لم يتم العثور على نص للقراءة");
         return;
       }
 
+      console.log("=== Ready to speak ===");
       console.log("Total chunks:", chunks.length);
+      console.log("First chunk:", chunks[0].substring(0, 100));
 
       // Store chunks and start speaking
       chunksRef.current = chunks;
@@ -537,7 +675,7 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
 
       // Start speaking first chunk
       speakNextChunk(0);
-    }, 100);
+    }, 200);
   };
 
   const stopTTS = () => {
