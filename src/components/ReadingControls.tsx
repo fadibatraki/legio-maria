@@ -131,6 +131,8 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
   const [ttsState, setTtsState] = useState<'idle' | 'playing' | 'paused'>('idle');
   const utterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
   const currentUtteranceIndexRef = useRef(0);
+  const isSpeakingRef = useRef(false);
+  const chunksRef = useRef<string[]>([]);
 
   useEffect(() => {
     setIsDark(window.localStorage.getItem(THEME_KEY) === "dark");
@@ -405,7 +407,10 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
   // TTS Functions
   const getChapterText = (): string => {
     const article = document.querySelector(".chapter-article");
-    if (!article) return "";
+    if (!article) {
+      console.log("No article found");
+      return "";
+    }
 
     // Get all paragraphs and headings, excluding links and blockquotes
     const elements = article.querySelectorAll("p, h1, h2");
@@ -423,47 +428,68 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
       }
     });
 
-    return textParts.join(" ");
+    const fullText = textParts.join(" ");
+    console.log("Extracted text length:", fullText.length);
+    return fullText;
   };
 
-  const speakNextChunk = (chunks: string[], index: number) => {
-    if (index >= chunks.length || typeof window === "undefined") {
+  const speakNextChunk = (index: number) => {
+    if (!isSpeakingRef.current || index >= chunksRef.current.length) {
+      console.log("Finished speaking or stopped");
       setTtsState("idle");
       currentUtteranceIndexRef.current = 0;
+      isSpeakingRef.current = false;
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(chunks[index]);
+    const chunk = chunksRef.current[index];
+    console.log(`Speaking chunk ${index + 1}/${chunksRef.current.length}:`, chunk.substring(0, 50));
+
+    const utterance = new SpeechSynthesisUtterance(chunk);
     utterance.lang = "ar-SA";
     utterance.rate = 0.9;
     utterance.pitch = 1;
+    utterance.volume = 1;
 
     // Try to find Arabic voice
     const voices = window.speechSynthesis.getVoices();
+    console.log("Available voices:", voices.length);
+
     const arabicVoice = voices.find(voice =>
       voice.lang.startsWith("ar") || voice.lang.includes("AR")
     );
+
     if (arabicVoice) {
+      console.log("Using Arabic voice:", arabicVoice.name);
       utterance.voice = arabicVoice;
+    } else {
+      console.log("No Arabic voice found, using default");
     }
 
+    utterance.onstart = () => {
+      console.log("Started speaking chunk", index);
+    };
+
     utterance.onend = () => {
+      console.log("Finished chunk", index);
       currentUtteranceIndexRef.current = index + 1;
-      if (ttsState === "playing") {
-        speakNextChunk(chunks, index + 1);
-      }
+      // Continue to next chunk
+      setTimeout(() => speakNextChunk(index + 1), 100);
     };
 
     utterance.onerror = (event) => {
       console.error("Speech synthesis error:", event);
       setTtsState("idle");
       currentUtteranceIndexRef.current = 0;
+      isSpeakingRef.current = false;
     };
 
     window.speechSynthesis.speak(utterance);
   };
 
   const startTTS = () => {
+    console.log("startTTS called");
+
     if (typeof window === "undefined" || !window.speechSynthesis) {
       alert("عذراً، متصفحك لا يدعم القراءة الصوتية");
       return;
@@ -477,61 +503,78 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
 
     // Stop any ongoing speech
     window.speechSynthesis.cancel();
+    isSpeakingRef.current = false;
 
-    // Split text into smaller chunks (every 150 chars approximately)
-    const chunks: string[] = [];
-    const words = text.split(/\s+/);
-    let currentChunk = "";
+    // Wait a bit for cancel to take effect
+    setTimeout(() => {
+      // Split text into smaller chunks (every 150 chars approximately)
+      const chunks: string[] = [];
+      const words = text.split(/\s+/);
+      let currentChunk = "";
 
-    words.forEach((word) => {
-      if (currentChunk.length + word.length + 1 > 150) {
-        if (currentChunk) chunks.push(currentChunk.trim());
-        currentChunk = word;
-      } else {
-        currentChunk += (currentChunk ? " " : "") + word;
+      words.forEach((word) => {
+        if (currentChunk.length + word.length + 1 > 150) {
+          if (currentChunk) chunks.push(currentChunk.trim());
+          currentChunk = word;
+        } else {
+          currentChunk += (currentChunk ? " " : "") + word;
+        }
+      });
+      if (currentChunk) chunks.push(currentChunk.trim());
+
+      if (chunks.length === 0) {
+        alert("لم يتم العثور على نص للقراءة");
+        return;
       }
-    });
-    if (currentChunk) chunks.push(currentChunk.trim());
 
-    if (chunks.length === 0) {
-      alert("لم يتم العثور على نص للقراءة");
-      return;
-    }
+      console.log("Total chunks:", chunks.length);
 
-    // Store chunks and start speaking
-    utterancesRef.current = chunks.map(chunk => new SpeechSynthesisUtterance(chunk));
-    currentUtteranceIndexRef.current = 0;
-    setTtsState("playing");
+      // Store chunks and start speaking
+      chunksRef.current = chunks;
+      currentUtteranceIndexRef.current = 0;
+      isSpeakingRef.current = true;
+      setTtsState("playing");
 
-    // Start speaking first chunk
-    speakNextChunk(chunks, 0);
+      // Start speaking first chunk
+      speakNextChunk(0);
+    }, 100);
   };
 
   const stopTTS = () => {
+    console.log("stopTTS called");
+
     if (typeof window === "undefined" || !window.speechSynthesis) {
       return;
     }
 
+    isSpeakingRef.current = false;
     window.speechSynthesis.cancel();
+    chunksRef.current = [];
     utterancesRef.current = [];
     currentUtteranceIndexRef.current = 0;
     setTtsState("idle");
   };
 
   const pauseTTS = () => {
+    console.log("pauseTTS called");
+
     if (typeof window === "undefined" || !window.speechSynthesis) {
       return;
     }
 
+    isSpeakingRef.current = false;
     window.speechSynthesis.pause();
     setTtsState("paused");
   };
 
   const resumeTTS = () => {
+    console.log("resumeTTS called");
+
     if (typeof window === "undefined" || !window.speechSynthesis) {
       return;
     }
 
+    isSpeakingRef.current = true;
     window.speechSynthesis.resume();
     setTtsState("playing");
   };
@@ -540,6 +583,7 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
   useEffect(() => {
     return () => {
       if (typeof window !== "undefined" && window.speechSynthesis) {
+        isSpeakingRef.current = false;
         window.speechSynthesis.cancel();
       }
     };
@@ -549,11 +593,18 @@ export default function ReadingControls({ chapters }: ReadingControlsProps) {
   useEffect(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       // Load voices
-      window.speechSynthesis.getVoices();
+      const voices = window.speechSynthesis.getVoices();
+      console.log("Initial voices loaded:", voices.length);
 
       // Some browsers need this event
       window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
+        const updatedVoices = window.speechSynthesis.getVoices();
+        console.log("Voices updated:", updatedVoices.length);
+        updatedVoices.forEach(voice => {
+          if (voice.lang.startsWith("ar")) {
+            console.log("Arabic voice found:", voice.name, voice.lang);
+          }
+        });
       };
     }
   }, []);
