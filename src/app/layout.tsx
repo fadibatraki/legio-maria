@@ -1,6 +1,7 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/Header";
 import ChaptersSidebar from "@/components/ChaptersSidebar";
+import ChapterNavigation from "@/components/ChapterNavigation";
 import SearchHighlighter from "@/components/SearchHighlighter";
 import { getChapters } from "@/data/chapters";
 import { Suspense } from "react";
@@ -28,11 +29,12 @@ export default async function RootLayout({
       <body>
         <div className="site-frame">
           <ChaptersSidebar chapters={chapters} />
-          <Header />
+          <Header chapters={chapters} />
           <Suspense fallback={null}>
             <SearchHighlighter />
           </Suspense>
           {children}
+          <ChapterNavigation chapters={chapters} />
           <Footer />
         </div>
       </body>

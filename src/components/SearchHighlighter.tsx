@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+
+const PENDING_BOOKMARK_HIGHLIGHT_KEY = "legio-reading-pending-bookmark-highlight";
+const BOOKMARK_HIGHLIGHT_EVENT = "legio-reading-bookmark-highlight";
+
+type BookmarkHighlight = {
+  href: string;
+  text?: string;
+};
 
 const normalizeText = (value: string) =>
   value
@@ -12,14 +20,16 @@ const normalizeText = (value: string) =>
     .toLowerCase();
 
 const unwrapPreviousHighlights = (root: HTMLElement) => {
-  root.querySelectorAll("mark.search-highlight").forEach((mark) => {
-    const text = document.createTextNode(mark.textContent ?? "");
-    mark.replaceWith(text);
-  });
+  root
+    .querySelectorAll(".highlight, .bookmark-highlight, mark.search-highlight")
+    .forEach((element) => {
+      const text = document.createTextNode(element.textContent ?? "");
+      element.replaceWith(text);
+    });
   root.normalize();
 };
 
-const highlightTextNode = (node: Text, query: string) => {
+const highlightTextNode = (node: Text, query: string, className = "highlight") => {
   const text = node.textContent ?? "";
   const normalizedText = normalizeText(text);
   const normalizedQuery = normalizeText(query);
@@ -38,10 +48,10 @@ const highlightTextNode = (node: Text, query: string) => {
     fragment.append(document.createTextNode(before));
   }
 
-  const mark = document.createElement("mark");
-  mark.className = "search-highlight";
-  mark.textContent = match;
-  fragment.append(mark);
+  const span = document.createElement("span");
+  span.className = className;
+  span.textContent = match;
+  fragment.append(span);
 
   if (after) {
     fragment.append(document.createTextNode(after));
@@ -51,52 +61,104 @@ const highlightTextNode = (node: Text, query: string) => {
   return true;
 };
 
+const highlightInArticle = (highlight: string, className = "highlight") => {
+  const root = document.querySelector<HTMLElement>(".chapter-article");
+
+  if (!root) {
+    return;
+  }
+
+  unwrapPreviousHighlights(root);
+
+  if (!highlight) {
+    return;
+  }
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+
+      if (
+        !node.textContent?.trim() ||
+        parent?.closest("a, button, script, style")
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as Text);
+  }
+
+  const highlighted = textNodes.some((node) =>
+    highlightTextNode(node, highlight, className),
+  );
+
+  if (!highlighted) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    root.querySelector(`.${className.split(" ").join(".")}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, 80);
+};
+
 export default function SearchHighlighter() {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const highlight = searchParams.get("highlight")?.trim() ?? "";
 
   useEffect(() => {
-    const root = document.querySelector<HTMLElement>(".chapter-article");
-
-    if (!root) {
-      return;
-    }
-
-    unwrapPreviousHighlights(root);
-
-    if (!highlight) {
-      return;
-    }
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const parent = node.parentElement;
-
-        if (
-          !node.textContent?.trim() ||
-          parent?.closest("a, button, script, style")
-        ) {
-          return NodeFilter.FILTER_REJECT;
-        }
-
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    });
-
-    const textNodes: Text[] = [];
-    while (walker.nextNode()) {
-      textNodes.push(walker.currentNode as Text);
-    }
-
-    textNodes.forEach((node) => highlightTextNode(node, highlight));
-
-    window.setTimeout(() => {
-      root.querySelector(".search-highlight")?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 80);
+    highlightInArticle(highlight);
   }, [highlight, searchParams]);
+
+  useEffect(() => {
+    const applyBookmarkHighlight = (text?: string) => {
+      if (!text?.trim()) {
+        return;
+      }
+
+      window.setTimeout(() => {
+        highlightInArticle(text, "highlight bookmark-highlight");
+      }, 180);
+    };
+
+    try {
+      const pending = window.sessionStorage.getItem(PENDING_BOOKMARK_HIGHLIGHT_KEY);
+
+      if (pending) {
+        const bookmark = JSON.parse(pending) as BookmarkHighlight;
+
+        if (bookmark.href === pathname) {
+          window.sessionStorage.removeItem(PENDING_BOOKMARK_HIGHLIGHT_KEY);
+          applyBookmarkHighlight(bookmark.text);
+        }
+      }
+    } catch {
+      window.sessionStorage.removeItem(PENDING_BOOKMARK_HIGHLIGHT_KEY);
+    }
+
+    const handleBookmarkHighlight = (event: Event) => {
+      const bookmark = (event as CustomEvent<BookmarkHighlight>).detail;
+
+      if (bookmark.href === pathname) {
+        applyBookmarkHighlight(bookmark.text);
+      }
+    };
+
+    window.addEventListener(BOOKMARK_HIGHLIGHT_EVENT, handleBookmarkHighlight);
+
+    return () => {
+      window.removeEventListener(BOOKMARK_HIGHLIGHT_EVENT, handleBookmarkHighlight);
+    };
+  }, [pathname]);
 
   return null;
 }

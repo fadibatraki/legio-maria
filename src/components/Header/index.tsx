@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import ReadingControls from "@/components/ReadingControls";
+import type { Chapter } from "@/data/chapters";
 
 type SearchResult = {
   number: string;
@@ -13,7 +15,11 @@ type SearchResult = {
   excerpt: string;
 };
 
-const Header = () => {
+type HeaderProps = {
+  chapters: Chapter[];
+};
+
+const Header = ({ chapters }: HeaderProps) => {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -68,7 +74,6 @@ const Header = () => {
   return (
     <header className="site-header">
       <div className="topbar-search-area">
-     
         <div className="topbar-search">
           <Search className="topbar-search-icon" size={20} strokeWidth={2} />
           <input
@@ -104,6 +109,7 @@ const Header = () => {
               className="topbar-search-results"
               id="chapter-search-results"
               role="listbox"
+              onMouseDown={(event) => event.preventDefault()}
             >
               {isSearching ? (
                 <p className="topbar-search-empty">جاري البحث...</p>
@@ -137,8 +143,11 @@ const Header = () => {
       </div>
 
       <div className="topbar-greeting">
-        <h1>دليل الليجيو ماريا</h1>
-        
+        <div className="topbar-greeting-row">
+          <h1>دليل الليجيو ماريا</h1>
+          <ReadingControls chapters={chapters} />
+        </div>
+
       </div>
     </header>
   );

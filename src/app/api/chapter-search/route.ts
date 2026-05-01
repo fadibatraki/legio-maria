@@ -56,6 +56,11 @@ const createExcerpt = (content: string, query: string) => {
   return `${prefix}${content.slice(start, end)}${suffix}`;
 };
 
+const getChapterOrderFromHref = (href: string) => {
+  const match = href.match(/\/chapter-(\d+)$/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
 async function getChapterPages() {
   const chapters = await getChapters();
   const chaptersDirectory = path.join(process.cwd(), "src/app/chapters");
@@ -123,7 +128,10 @@ export async function GET(request: Request) {
     .filter((result): result is SearchResult & { score: number } =>
       Boolean(result),
     )
-    .sort((first, second) => second.score - first.score)
+    .sort(
+      (first, second) =>
+        getChapterOrderFromHref(first.href) - getChapterOrderFromHref(second.href),
+    )
     .map(({ score, ...result }) => result);
 
   return NextResponse.json({ results });
